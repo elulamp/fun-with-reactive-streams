@@ -59,11 +59,7 @@ public class StreamsTest {
             stream -> stream.map(
                 i -> {
                     System.out.println(Thread.currentThread().getName() + " expensive computation on " + i);
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        throw new IllegalStateException(e);
-                    }
+                    sleep(1000);
                     return i;
                 }
             )
@@ -73,5 +69,13 @@ public class StreamsTest {
         Integer count = eventualItemsCount.get();
         assertThat(count, is(300));
 
+    }
+
+    private void sleep(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }
