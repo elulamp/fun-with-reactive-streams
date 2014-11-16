@@ -147,7 +147,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
         val p = Promise[Int]()
         val eventualNumberOfMessagesProcessed = p.future
 
-        implicit val execContext = ExecutionContexts.fromExecutor(Executors.newFixedThreadPool(4))
+        import scala.concurrent.ExecutionContext.Implicits.global
 
         val rxSubscriber = new Subscriber[util.List[Future[Integer]]]() {
 
