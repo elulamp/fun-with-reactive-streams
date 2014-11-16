@@ -7,8 +7,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.ActorSystem
 import akka.dispatch.ExecutionContexts
 import akka.stream.scaladsl._
-import akka.stream.{FlowMaterializer, MaterializerSettings, OverflowStrategy}
-import org.reactivestreams.{Publisher, Subscription}
+import akka.stream.{FlowMaterializer, OverflowStrategy}
+import org.reactivestreams.Subscription
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Seconds, Span}
@@ -22,13 +22,15 @@ import scala.concurrent.{Await, Future, Promise}
 
 class StreamsSpec extends FunSuite with ScalaFutures {
 
+    val client = new Client
+
     test("retrieveAll should return Reactive Streams Publisher, providing interop") {
 
         val p = Promise[Int]()
         val eventualNumberOfMessagesProcessed = p.future
 
         // one can use rxJava Subscription if one wishes to
-        val rxSubscriber = new Subscriber[Int]() {
+        val rxSubscriber = new Subscriber[Integer]() {
 
             val counter = new AtomicInteger()
 
@@ -41,15 +43,15 @@ class StreamsSpec extends FunSuite with ScalaFutures {
                 p.failure(e)
             }
 
-            override def onNext(t: Int): Unit = {
+            override def onNext(t: Integer): Unit = {
                 println(s"${Thread.currentThread().getName} rx On next")
                 counter.incrementAndGet()
             }
         }
 
-        val publisher = retrieveAll()
+        val publisher = client.retrieveAll()
 
-        publisher.subscribe(new RxSubscriberToRsSubscriberAdapter[Int](rxSubscriber))
+        publisher.subscribe(new RxSubscriberToRsSubscriberAdapter[Integer](rxSubscriber))
 
         whenReady(eventualNumberOfMessagesProcessed, timeout(Span(400, Seconds))) { count =>
             assert(count == 300)
@@ -57,7 +59,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
     }
 
     test("retrieveAll stream processing using Flow and rs Subscription") {
-        val publisher = retrieveAll()
+        val publisher = client.retrieveAll()
 
         implicit val system = ActorSystem("heavy-computing")
         implicit val materializer = FlowMaterializer()
@@ -66,7 +68,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
         val source = Source(publisher)
 
-        val flow = Flow[Int].mapAsync {
+        val flow = Flow[Integer].mapAsync {
             i => Future {
                 println(s"${Thread.currentThread().getName} doing heavy calculation with $i")
                 Thread.sleep(1000)
@@ -77,7 +79,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
         val p = Promise[Int]()
         val eventualNumberOfMessagesProcessed = p.future
 
-        val sub = new org.reactivestreams.Subscriber[Int]() {
+        val sub = new org.reactivestreams.Subscriber[Integer]() {
             val counter = new AtomicInteger()
             var subscription: Subscription = null
 
@@ -90,7 +92,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
             override def onComplete(): Unit = p.success(counter.get())
 
-            override def onNext(i: Int): Unit = {
+            override def onNext(i: Integer): Unit = {
                 counter.incrementAndGet()
                 println(s"I am done with $i")
                 subscription.request(4)
@@ -106,7 +108,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
     }
 
     test("retrieveAll stream processing using Source transformations") {
-        val publisher = retrieveAll()
+        val publisher = client.retrieveAll()
 
         implicit val system = ActorSystem("heavy-computing")
         implicit val materializer = FlowMaterializer()
@@ -138,16 +140,16 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
     test("retrieveAll stream processing using RxJava transformations") {
 
-        val publisher = retrieveAll()
+        val publisher = client.retrieveAll()
 
-        val observable: Observable[Int] = RxReactiveStreams.toObservable(publisher)
+        val observable: Observable[Integer] = RxReactiveStreams.toObservable(publisher)
 
         val p = Promise[Int]()
         val eventualNumberOfMessagesProcessed = p.future
 
         implicit val execContext = ExecutionContexts.fromExecutor(Executors.newFixedThreadPool(4))
 
-        val rxSubscriber = new Subscriber[util.List[Future[Int]]]() {
+        val rxSubscriber = new Subscriber[util.List[Future[Integer]]]() {
 
             val counter = new AtomicInteger()
 
@@ -155,7 +157,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
             override def onCompleted(): Unit = p.success(counter.get())
 
-            override def onNext(list: util.List[Future[Int]]): Unit = {
+            override def onNext(list: util.List[Future[Integer]]): Unit = {
 
                 val results = Await.result(Future.sequence(list.asScala), 5.seconds)
 
@@ -168,8 +170,8 @@ class StreamsSpec extends FunSuite with ScalaFutures {
             }
         }
 
-        val o2: Observable[Future[Int]] = observable.map(new Func1[Int, Future[Int]]() {
-            override def call(i: Int): Future[Int] = Future {
+        val o2: Observable[Future[Integer]] = observable.map(new Func1[Integer, Future[Integer]]() {
+            override def call(i: Integer): Future[Integer] = Future {
                 println(s"${Thread.currentThread().getName} doing heavy calculation with $i")
                 Thread.sleep(1000)
                 i
@@ -182,40 +184,4 @@ class StreamsSpec extends FunSuite with ScalaFutures {
             assert(count == 300)
         }}
     }
-
-    private def retrieveAll(): Publisher[Int] = {
-
-        implicit val system = ActorSystem("rs")
-        implicit val materializer = FlowMaterializer(MaterializerSettings(system).withDispatcher("my-thread-pool-dispatcher"))
-
-        val sourceOne = Source((1 to 100).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
-        val sourceTwo = Source((101 to 200).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
-        val sourceThree = Source((201 to 300).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
-
-        val publisherSink = PublisherSink[Int]()
-        val onCompletionSink = OnCompleteSink[Int]{
-            _ => {
-                println("on complition")
-                system.shutdown()
-            }
-        }
-
-        val materialized = FlowGraph { implicit builder =>
-            import akka.stream.scaladsl.FlowGraphImplicits._
-
-            val merge = Merge[Int]
-            val broadcast = Broadcast[Int]
-
-            sourceOne ~> merge
-            sourceTwo ~> merge
-            sourceThree ~> merge
-            merge ~> broadcast
-            broadcast ~> publisherSink
-            broadcast ~> onCompletionSink
-
-        }.run()
-
-        materialized.get(publisherSink)
-    }
-
 }
