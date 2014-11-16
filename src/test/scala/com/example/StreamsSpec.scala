@@ -1,11 +1,9 @@
 package com.example
 
 import java.util
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.ActorSystem
-import akka.dispatch.ExecutionContexts
 import akka.stream.scaladsl._
 import akka.stream.{FlowMaterializer, OverflowStrategy}
 import org.reactivestreams.Subscription
@@ -119,7 +117,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
         val counter = new AtomicInteger()
 
-        val f =source mapAsync {
+        val f = source mapAsync {
             i => Future {
                 println(s"${Thread.currentThread().getName} doing heavy calculation with $i")
                 Thread.sleep(1000)
