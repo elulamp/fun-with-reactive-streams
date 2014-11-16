@@ -30,9 +30,8 @@ class StreamsSpec extends FunSuite with ScalaFutures {
             val counter = new AtomicInteger()
 
             override def onCompleted(): Unit = {
+                println("on subscriber completed")
                 p.success(counter.get())
-                system.shutdown()
-                system.awaitTermination()
             }
 
             override def onError(e: Throwable): Unit = {
@@ -51,7 +50,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
         publisher.subscribe(new RxSubscriberToRsSubscriberAdapter[Int](rxSubscriber))
 
         whenReady(eventualNumberOfMessagesProcessed, timeout(Span(400, Seconds))) { count =>
-            assert(count == 300)
+            assert(count == 30)
         }
     }
 
@@ -59,21 +58,30 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
         implicit val materializer = FlowMaterializer(MaterializerSettings(system).withDispatcher("my-thread-pool-dispatcher"))
 
-        val sourceOne = Source((1 to 100).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
-        val sourceTwo = Source((101 to 200).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
-        val sourceThree = Source((201 to 300).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
+        val sourceOne = Source((1 to 10).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
+        val sourceTwo = Source((11 to 20).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
+        val sourceThree = Source((21 to 30).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
 
         val publisherSink = PublisherSink[Int]()
+        val onCompletionSink = OnCompleteSink[Int]{
+            _ => {
+                println("on complition")
+                system.shutdown()
+            }
+        }
 
         val materialized = FlowGraph { implicit builder =>
             import akka.stream.scaladsl.FlowGraphImplicits._
 
             val merge = Merge[Int]
+            val broadcast = Broadcast[Int]
 
             sourceOne ~> merge
             sourceTwo ~> merge
             sourceThree ~> merge
-            merge ~> publisherSink
+            merge ~> broadcast
+            broadcast ~> publisherSink
+            broadcast ~> onCompletionSink
 
         }.run()
 
