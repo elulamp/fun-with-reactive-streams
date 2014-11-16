@@ -16,8 +16,6 @@ import scala.concurrent.Promise
 
 class StreamsSpec extends FunSuite with ScalaFutures {
 
-    implicit val system = ActorSystem("rs")
-
     test("retrieveAll should returnd Reactive Streams Publisher, providing interop") {
 
         val p = Promise[Int]()
@@ -56,6 +54,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
     private def retrieveAll(): Publisher[Int] = {
 
+        implicit val system = ActorSystem("rs")
         implicit val materializer = FlowMaterializer(MaterializerSettings(system).withDispatcher("my-thread-pool-dispatcher"))
 
         val sourceOne = Source((1 to 10).toList).map(i => {println(s"${Thread.currentThread().getName} read $i"); i})
