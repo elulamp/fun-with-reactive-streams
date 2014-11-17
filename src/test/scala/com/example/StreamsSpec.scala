@@ -12,6 +12,7 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Seconds, Span}
 import rx.functions.Func1
 import rx.internal.reactivestreams.RxSubscriberToRsSubscriberAdapter
+import rx.schedulers.Schedulers
 import rx.{Observable, RxReactiveStreams, Subscriber}
 
 import scala.collection.JavaConverters._
@@ -157,7 +158,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
             override def onNext(i: Integer): Unit = {
                 counter.incrementAndGet()
-                println(s"I am done with $i")
+                println(s"${Thread.currentThread().getName} I am done with $i")
             }
         }
 
@@ -174,7 +175,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
                 val results = Await.result(Future.sequence(list.asScala), 5.seconds).asJava
                 Observable.from(results)
             }
-        }).subscribe(rxSubscriber)
+        }).observeOn(Schedulers.computation()).onBackpressureBuffer().subscribe(rxSubscriber)
 
         whenReady(eventualNumberOfMessagesProcessed, timeout(Span(100, Seconds))) { count => {
             assert(count == 300)
