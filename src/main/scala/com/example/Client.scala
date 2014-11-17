@@ -13,13 +13,13 @@ class Client {
         implicit val materializer = FlowMaterializer(MaterializerSettings(system).withDispatcher("my-thread-pool-dispatcher"))
 
         val sourceOne = Source((1 to 100).toList).map(i => {
-            println(s"${Thread.currentThread().getName} read $i"); i:java.lang.Integer
+            println(s"${Thread.currentThread().getName} read $i"); i: Integer
         })
         val sourceTwo = Source((101 to 200).toList).map(i => {
-            println(s"${Thread.currentThread().getName} read $i"); i:java.lang.Integer
+            println(s"${Thread.currentThread().getName} read $i"); i: Integer
         })
         val sourceThree = Source((201 to 300).toList).map(i => {
-            println(s"${Thread.currentThread().getName} read $i"); i:java.lang.Integer
+            println(s"${Thread.currentThread().getName} read $i"); i: Integer
         })
 
         val publisherSink = PublisherSink[Integer]()
