@@ -147,7 +147,7 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
         import scala.concurrent.ExecutionContext.Implicits.global
 
-        val rxSubscriber = new Subscriber[util.List[Future[Integer]]]() {
+        val rxSubscriber = new Subscriber[Integer]() {
 
             val counter = new AtomicInteger()
 
@@ -155,16 +155,9 @@ class StreamsSpec extends FunSuite with ScalaFutures {
 
             override def onCompleted(): Unit = p.success(counter.get())
 
-            override def onNext(list: util.List[Future[Integer]]): Unit = {
-
-                val results = Await.result(Future.sequence(list.asScala), 5.seconds)
-
-                results.foreach {
-                    i => {
-                        counter.incrementAndGet()
-                        println(s"I am done with $i")
-                    }
-                }
+            override def onNext(i: Integer): Unit = {
+                counter.incrementAndGet()
+                println(s"I am done with $i")
             }
         }
 
@@ -176,7 +169,12 @@ class StreamsSpec extends FunSuite with ScalaFutures {
             }
         })
 
-        o2.buffer(4).subscribe(rxSubscriber)
+        o2.buffer(4).flatMap(new Func1[util.List[Future[Integer]], Observable[Integer]]() {
+            override def call(list: util.List[Future[Integer]]): Observable[Integer] = {
+                val results = Await.result(Future.sequence(list.asScala), 5.seconds).asJava
+                Observable.from(results)
+            }
+        }).subscribe(rxSubscriber)
 
         whenReady(eventualNumberOfMessagesProcessed, timeout(Span(100, Seconds))) { count => {
             assert(count == 300)
